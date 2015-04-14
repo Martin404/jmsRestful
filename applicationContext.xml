@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:amq="http://activemq.apache.org/schema/core"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:tx="http://www.springframework.org/schema/tx"
+	xsi:schemaLocation="http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-3.0.xsd
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-3.0.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.1.xsd">
+        
+    <!-- 数据库连接配置 -->
+	<context:property-placeholder location="classpath:jdbc.properties" />
+	<bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"
+		destroy-method="close">
+		<!--数据库驱动 -->
+		<property name="driverClassName" value="${jdbc.driverClassName}"></property>
+		<!-- 数据库URL -->
+		<property name="url" value="${jdbc.url}"></property>
+		<!-- 用户名 -->
+		<property name="username" value="${jdbc.username}"></property>
+		<!-- 密码 -->
+		<property name="password" value="${jdbc.password}"></property>
+		<property name="initialSize" value="${jdbc.initialSize}" />
+		<!-- maxActive：最大连接数据库连接数，设置为0时，表示没有限制 -->
+		<property name="maxActive" value="${jdbc.maxActive}" />
+		<!-- maxIdle：最大等待连接中的数量，设置为0时，表示没有限制 -->
+		<property name="maxIdle" value="${jdbc.maxIdle}" />
+		<property name="minIdle" value="${jdbc.minIdle}" />
+		<!-- testOnBorrow：指明是否在从池中取出连接前进行检验,如果检验失败,则从池中去除连接并尝试取出另一个,注意: 设置为true后如果要生效,validationQuery参数必须设置为非空字符串 -->
+		<property name="testOnBorrow" value="${jdbc.testOnBorrow}" />
+		<!-- testOnReturn 指明是否在归还到池中前进行检验,注意: 设置为true后如果要生效,validationQuery参数必须设置为非空字符串 -->
+		<property name="testOnReturn" value="${jdbc.testOnReturn}" />
+		<!-- testWhileIdle 指明连接是否被空闲连接回收器(如果有)进行检验.如果检测失败,则连接将被从池中去除.注意: 设置为true后如果要生效,validationQuery参数必须设置为非空字符串 -->
+		<property name="testWhileIdle" value="${jdbc.testWhileIdle}" />
+		<!--minEvictableIdleTimeMillis 1000 * 60 * 30 连接在池中保持空闲而不被空闲连接回收器线程 (如果有)回收的最小时间值，单位毫秒 -->
+		<property name="minEvictableIdleTimeMillis" value="${jdbc.minEvictableIdleTimeMillis}" />
+		<!--timeBetweenEvictionRunsMillis 在空闲连接回收器线程运行期间休眠的时间值,以毫秒为单位.如果设置为非正数,则不运行空闲连接回收器线程 -->
+		<property name="timeBetweenEvictionRunsMillis" value="${jdbc.timeBetweenEvictionRunsMillis}" />
+		<!-- validationQuery：校验语句,用来验证从连接池取出的连接,在将连接返回给调用者之前.如果指定,则查询必须是一个SQL SELECT并且必须返回至少一行记录 -->
+		<property name="validationQuery" value="${jdbc.validationQuery}" />
+	</bean>
+	
+	<!--  配置SessionFactory -->
+	<bean id="sessionFactory" class="org.springframework.orm.hibernate4.LocalSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>    
+        <property name="packagesToScan" value="com.hugnew.jms.webservice.entity"/>
+        <property name="hibernateProperties">
+            <props>
+                <prop key="hibernate.dialect">${hibernate.dialect}</prop>
+                <prop key="hibernate.show_sql">${hibernate.show_sql}</prop>
+                <prop key="hibernate.hbm2ddl.auto">${hibernate.hbm2ddl.auto}</prop>
+                <prop key="hibernate.format_sql">${hibernate.format_sql}</prop>
+            </props>
+        </property>
+    </bean>
+	<!-- Spring的事务管理器管理事务 添加注解@Transactional可以启动事务  -->
+	<bean name="transactionManager"
+		class="org.springframework.orm.hibernate4.HibernateTransactionManager">
+		<property name="sessionFactory" ref="sessionFactory"></property>
+	</bean>    
+	<!-- Activates @Transactional for DefaultImageDatabase 使用注解方式来使用声明事物 -->
+	<tx:annotation-driven transaction-manager="transactionManager"></tx:annotation-driven>
+	
+	<!-- 扫描组件,@repository,@service,@controller,是@component的细化 @autowired的作用是实现set、get方法 -->
+	<context:component-scan base-package="com.hugnew.jms.webservice.*"></context:component-scan>
+	<!-- 日期处理Util类注入 add by justin.su 2014-01-02 -->
+	<bean id="dateUtil" class="com.hugnew.jms.webservice.util.DateUtil"></bean>
+	
+	 <!-- 配置目标连接工厂,配置与ActiveMQ的连接 -->
+    <bean id="targetConnectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+        <!-- ActiveMq连接地址 -->
+        <property name="brokerURL" value="tcp://192.168.1.150:61616"/>
+        <property name="useAsyncSend" value="true"/>
+    </bean>
+    
+    <!-- 配置连接工厂 -->
+    <bean id="cachingConnectionFactory" class="org.springframework.jms.connection.CachingConnectionFactory">
+        <!-- 缓存数量 -->
+        <property name="sessionCacheSize" value="10"/>
+        <property name="targetConnectionFactory" ref="targetConnectionFactory"/>
+    </bean>
+    
+    <!-- 发送消息的目的地（订阅模式） -->
+  <!--   <bean id="topicDestination" class="org.apache.activemq.command.ActiveMQTopic">
+        设置消息主题的名字
+        <constructor-arg index="0" value="supumall" />
+    </bean> -->
+    <!-- 发送消息的目的地（P2P模式） -->
+    <bean id="queueDestination" class="org.apache.activemq.command.ActiveMQQueue">
+        <constructor-arg index="0" value="supuy.SupuyPushQueue"/>
+    </bean>
+    
+    <!-- 配置JMS模板 -->
+  <!--   <bean id="jmsTemplate" class="org.springframework.jms.core.JmsTemplate">
+        <property name="connectionFactory" ref="cachingConnectionFactory" />
+        <property name="defaultDestination" ref="topicDestination" />
+        订阅发布模式
+        <property name="pubSubDomain" value="true" />
+        <property name="receiveTimeout" value="10000" />
+    </bean> -->
+    
+	<!-- 以下是restlet配置 -->
+	<!-- component -->
+	<bean id="component" class="org.restlet.ext.spring.SpringComponent">
+		<property name="defaultTarget" ref="restRouter" />
+	</bean>
+	<!-- router -->
+	<bean id="restRouter" name="root" class="org.restlet.ext.spring.SpringBeanRouter"></bean>
+	<!-- autowire：no -->
+	<!-- autowire：byName 根据属性名自动装配。此选项将检查容器并根据名字查找与属性完全一致的bean，并将其与属性自动装配。 例如，在bean定义中将autowire设置为by 
+		name，而该bean包含master属性（同时提供setMaster(..)方法）， Spring就会查找名为master的bean定义，并用它来装配给master属性。 -->
+	<!-- autowire：byType 如果容器中存在一个与指定属性类型相同的bean，那么将与该属性自动装配。如果存在多个该类型的bean， 
+		那么将会抛出异常，并指出不能使用byType方式进行自动装配。若没有找到相匹配的bean，则什么事都不发生，属性也不会被设置。 如果你不希望这样，那么可以通过设置dependency-check="objects"让Spring抛出异常。 -->
+	<!-- autowire：constructor 与byType的方式类似，不同之处在于它应用于构造器参数。如果在容器中没有找到与构造器参数类型一致的bean，那么将会抛出异常。 -->
+	<!-- autowire：autodetect 通过bean类的自省机制（introspection）来决定是使用constructor还是byType方式进行自动装配。如果发现默认的构造器，那么将使用byType方式。 -->
+	<!-- scope: 这里的scope就是用来配置spring bean的作用域，它标识bean的作用域。 -->
+	<!-- scope: singleton 当一个bean的作用域设置为singleton, 那么Spring IOC容器中只会存在一个共享的bean实例，并且所有对bean的请求，只要id与该bean定义相匹配，则只会返回bean的同一实例。 
+		换言之，当把一个bean定义设置为singleton作用域时，Spring IOC容器只会创建该bean定义的唯一实例。这个单一实例会被存储到单例缓存（singleton 
+		cache）中，并且所有针对该bean的后续请求和引用都将返回被缓存的对象实例， 这里要注意的是singleton作用域和GOF设计模式中的单例是完全不同的，单例设计模式表示一个ClassLoader中只有一个class存在，而这里的singleton则表示一个容器对应一个bean，也就是说当一个bean被标识为singleton时候，spring的IOC容器中只会存在一个该bean。 -->
+	<!-- scope: prototype作用域部署的bean，每一次请求（将其注入到另一个bean中，或者以程序的方式调用容器的getBean()方法）都会产生一个新的bean实例，相当与一个new的操作，对于prototype作用域的bean， 
+		有一点非常重要，那就是Spring不能对一个prototype bean的整个生命周期负责，容器在初始化、配置、装饰或者是装配完一个prototype实例后，将它交给客户端，随后就对该prototype实例不闻不问了。不管何种作用域， 
+		容器都会调用所有对象的初始化生命周期回调方法，而对prototype而言，任何配置好的析构生命周期回调方法都将不会被调用。清除prototype作用域的对象并释放任何prototype 
+		bean所持有的昂贵资源，都是客户端代码的职责。 （让Spring容器释放被singleton作用域bean占用资源的一种可行方式是，通过使用bean的后置处理器，该处理器持有要被清除的bean的引用。） -->
+	<!-- scope: request表示该针对每一次HTTP请求都会产生一个新的bean，同时该bean仅在当前HTTP request内有效 -->
+	<!-- scope: session作用域表示该针对每一次HTTP请求都会产生一个新的bean，同时该bean仅在当前HTTP session内有效 -->
+	<!-- scope: global session作用域类似于标准的HTTP Session作用域，不过它仅仅在基于portlet的web应用中才有意义。Portlet规范定义了全局Session的概念，它被所有构成某个portlet 
+		web应用的各种不同的portlet所共享。在global session作用域中定义的bean被限定于全局portlet Session的生命周期范围内。 
+		如果你在web中使用global session作用域来标识bean，那么web会自动当成session类型来使用。 -->
+	<!-- scope: 自定义bean装配作用域在spring2.0中作用域是可以任意扩展的，你可以自定义作用域，甚至你也可以重新定义已有的作用域（但是你不能覆盖singleton和prototype），spring的作用域由接口org.springframework.beans.factory.config.Scope来定义，自定义自己的作用域只要实现该接口即可 -->
+	<!-- 装载Resource资源 -->
+	<bean name="/senderMQ" id="activeMQResource" autowire="byName"
+		scope="prototype" class="com.hugnew.jms.webservice.rest.ActiveMQResource" />
+	<bean name="/open4Apple" id="pNSOpenRestful" autowire="byName"
+		scope="prototype" class="com.hugnew.jms.webservice.rest.PNSOpenResource" />	
+	<bean name="/close4Apple" id="pNSCloseRestful" autowire="byName"
+		scope="prototype" class="com.hugnew.jms.webservice.rest.PNSCloseResource" />	
+</beans>
